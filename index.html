@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Table Checklist with File Upload</title>
+    <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 20px;
+          background: #f9f9f9;
+          color: #333;
+        }
+        .container {
+          max-width: 900px;
+          margin: auto;
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .header h1 { margin-bottom: 5px; }
+        .checklist-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        .checklist-table th, .checklist-table td {
+          border: 1px solid #ddd;
+          padding: 8px;
+          text-align: left;
+        }
+        .checkbox {
+          width: 20px;
+          height: 20px;
+          border: 1px solid #666;
+          cursor: pointer;
+          display: inline-block;
+          vertical-align: middle;
+        }
+        .checkbox.checked { background-color: #4CAF50; }
+        .add-item-section { margin-bottom: 10px; }
+        .add-item-input { width: 65%; padding: 6px; font-size: 1rem; }
+        .add-btn {
+          padding: 6px 12px;
+          cursor: pointer;
+          background-color: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          font-size: 1rem;
+        }
+        .progress-bar {
+          background: #eee;
+          height: 10px;
+          border-radius: 5px;
+          margin: 10px 0;
+          overflow: hidden;
+        }
+        .progress-fill { background: #4CAF50; height: 100%; width: 0; transition: width 0.3s ease; }
+        .progress-text { font-size: 0.9rem; margin-bottom: 15px; color: #666; }
+        .delete-btn {
+          background: transparent;
+          border: none;
+          color: red;
+          font-weight: bold;
+          cursor: pointer;
+          font-size: 1.2rem;
+          line-height: 1;
+        }
+        .task-text[contenteditable="true"] {
+          min-width: 100px;
+          outline: none;
+          cursor: text;
+        }
+        textarea.comment-textarea {
+          width: 100%;
+          min-height: 50px;
+          resize: vertical;
+          font-family: inherit;
+          font-size: 0.9rem;
+        }
+        input.name-input { width: 100%; box-sizing: border-box; font-size: 0.9rem; }
+        input.file-input { font-size: 0.85rem; }
+        .file-name { font-size: 0.85rem; color: #333; display: block; margin-top: 2px; }
+        tr.completed .task-text { text-decoration: line-through; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Neue Idee für AutoCAD tools</h1>
+            <p>Mach deine Arbeit bei der Planzeichnung viel einfacher als zuvor!</p>
+        </div>
+        
+        <div class="table-container">
+            <div class="add-item-section">
+                <input type="text" class="add-item-input" placeholder="Add a new task..." id="newTaskInput" />
+                <button class="add-btn" onclick="addNewTask()">Add Task</button>
+            </div>
+
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">0 of 0 tasks completed</div>
+
+            <table class="checklist-table">
+                <thead>
+                    <tr>
+                        <th>Done</th>
+                        <th>Task</th>
+                        <th>Name</th>
+                        <th>Comments & Notes</th>
+                        <th>Attachment</th>
+                        <th>Delete</th>
+                    </tr>
+                </thead>
+                <tbody id="checklistTableBody">
+                    <!-- Default sample row -->
+                    <tr>
+                        <td>
+                            <div class="checkbox" onclick="toggleCheck(this)"></div>
+                        </td>
+                        <td>
+                            <div class="task-text" contenteditable="true">Review project proposal</div>
+                        </td>
+                        <td>
+                            <input type="text" class="name-input" placeholder="Your name..." />
+                        </td>
+                        <td>
+                            <textarea class="comment-textarea" placeholder="Add your comments, notes, or details here..."></textarea>
+                        </td>
+                        <td>
+                            <input type="file" class="file-input" onchange="handleFileUpload(this)" />
+                            <span class="file-name"></span>
+                        </td>
+                        <td>
+                            <button class="delete-btn" onclick="deleteTask(this)">×</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCWjLnxfJLaIDCjKHyi1Iw4y8eKpQ-lDsg",
+            authDomain: "autocad-idea.firebaseapp.com",
+            projectId: "autocad-idea",
+            storageBucket: "autocad-idea.appspot.com",
+            messagingSenderId: "258031635278",
+            appId: "1:258031635278:web:1433c6d966f41858292c1f",
+            measurementId: "G-03ES6SRJ80"
+        };
+
+        const app = firebase.initializeApp(firebaseConfig);
+        const analytics = firebase.analytics ? firebase.analytics(app) : null;
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+
+        async function saveData() {
+            const rows = document.querySelectorAll('#checklistTableBody tr');
+            const tasks = [];
+
+            rows.forEach(row => {
+                const checkbox = row.querySelector('.checkbox');
+                const taskText = row.querySelector('.task-text').textContent;
+                const name = row.querySelector('.name-input').value;
+                const comment = row.querySelector('.comment-textarea').value;
+                const completed = checkbox.classList.contains('checked');
+                const fileUrl = row.querySelector('.file-input').dataset.fileUrl || null;
+
+                tasks.push({ text: taskText, name, comment, completed, fileUrl });
+            });
+
+            try {
+                await db.collection("checklist").doc("main").set({ tasks });
+                console.log("Data saved to Firestore");
+            } catch (error) {
+                console.error("Error saving data: ", error);
+            }
+        }
+
+        async function loadData() {
+            try {
+                const docSnap = await db.collection("checklist").doc("main").get();
+                if (docSnap.exists) {
+                    const tasks = docSnap.data().tasks;
+                    const tableBody = document.getElementById('checklistTableBody');
+                    tableBody.innerHTML = '';
+
+                    tasks.forEach(task => {
+                        const newRow = document.createElement('tr');
+                        newRow.innerHTML = `
+                            <td>
+                                <div class="checkbox ${task.completed ? 'checked' : ''}" onclick="toggleCheck(this)"></div>
+                            </td>
+                            <td>
+                                <div class="task-text" contenteditable="true">${task.text}</div>
+                            </td>
+                            <td>
+                                <input type="text" class="name-input" placeholder="Your name..." value="${task.name || ''}">
+                            </td>
+                            <td>
+                                <textarea class="comment-textarea" placeholder="Add your comments, notes, or details here...">${task.comment || ''}</textarea>
+                            </td>
+                            <td>
+                                <input type="file" class="file-input" onchange="handleFileUpload(this)" />
+                                ${task.fileUrl ? `<a href="${task.fileUrl}" target="_blank" class="file-name">${task.fileUrl.split('/').pop()}</a>` : '<span class="file-name"></span>'}
+                            </td>
+                            <td>
+                                <button class="delete-btn" onclick="deleteTask(this)">×</button>
+                            </td>
+                        `;
+                        if (task.completed) newRow.classList.add('completed');
+                        if (task.fileUrl) newRow.querySelector('.file-input').dataset.fileUrl = task.fileUrl;
+                        tableBody.appendChild(newRow);
+                    });
+
+                    updateProgress();
+                }
+            } catch (error) {
+                console.error("Error loading data: ", error);
+            }
+        }
+
+        function toggleCheck(checkbox) {
+            checkbox.classList.toggle('checked');
+            const row = checkbox.closest('tr');
+            row.classList.toggle('completed');
+            updateProgress();
+            saveData();
+        }
+
+        function addNewTask() {
+            const input = document.getElementById('newTaskInput');
+            const taskText = input.value.trim();
+            if (!taskText) { alert('Please enter a task description'); return; }
+
+            const tableBody = document.getElementById('checklistTableBody');
+            const newRow = document.createElement('tr');
+            newRow.innerHTML = `
+                <td>
+                    <div class="checkbox" onclick="toggleCheck(this)"></div>
+                </td>
+                <td>
+                    <div class="task-text" contenteditable="true">${taskText}</div>
+                </td>
+                <td>
+                    <input type="text" class="name-input" placeholder="Your name...">
+                </td>
+                <td>
+                    <textarea class="comment-textarea" placeholder="Add your comments, notes, or details here..."></textarea>
+                </td>
+                <td>
+                    <input type="file" class="file-input" onchange="handleFileUpload(this)" />
+                    <span class="file-name"></span>
+                </td>
+                <td>
+                    <button class="delete-btn" onclick="deleteTask(this)">×</button>
+                </td>
+            `;
+            tableBody.appendChild(newRow);
+            input.value = '';
+            updateProgress();
+            saveData();
+        }
+
+        function deleteTask(button) {
+            const row = button.closest('tr');
+            row.remove();
+            updateProgress();
+            saveData();
+        }
+
+        function updateProgress() {
+            const rows = document.querySelectorAll('#checklistTableBody tr');
+            const completedRows = document.querySelectorAll('#checklistTableBody tr.completed');
+            const total = rows.length;
+            const completed = completedRows.length;
+            const percentage = total > 0 ? (completed / total) * 100 : 0;
+
+            document.getElementById('progressFill').style.width = percentage + '%';
+            document.getElementById('progressText').textContent = `${completed} of ${total} tasks completed`;
+        }
+
+        async function handleFileUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const row = input.closest('tr');
+            const fileNameSpan = row.querySelector('.file-name');
+            fileNameSpan.textContent = file.name;
+
+            try {
+                const fileRef = storage.ref(`attachments/${Date.now()}_${file.name}`);
+                await fileRef.put(file);
+                const downloadURL = await fileRef.getDownloadURL();
+                input.dataset.fileUrl = downloadURL;
+                saveData();
+            } catch (error) {
+                console.error("File upload error:", error);
+            }
+        }
+
+        document.addEventListener('input', e => {
+            if (
+                e.target.classList.contains('task-text') || 
+                e.target.classList.contains('comment-textarea') || 
+                e.target.classList.contains('name-input')
+            ) saveData();
+        });
+
+        document.getElementById('newTaskInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter') addNewTask();
+        });
+
+        window.addEventListener('load', loadData);
+    </script>
+</body>
+</html>
