@@ -80,8 +80,9 @@
           font-size: 0.9rem;
         }
         input.name-input { width: 100%; box-sizing: border-box; font-size: 0.9rem; }
-        input.file-input { font-size: 0.85rem; }
-        .file-name { font-size: 0.85rem; color: #333; display: block; margin-top: 2px; }
+        input.file-input { font-size: 0.85rem; margin-bottom: 4px; display: block; }
+        .file-name { font-size: 0.85rem; color: #0066cc; display: block; margin-top: 2px; text-decoration: none; }
+        .file-name:hover { text-decoration: underline; }
         tr.completed .task-text { text-decoration: line-through; color: #999; }
     </style>
 </head>
@@ -212,7 +213,9 @@
                             </td>
                             <td>
                                 <input type="file" class="file-input" onchange="handleFileUpload(this)" />
-                                ${task.fileUrl ? `<a href="${task.fileUrl}" target="_blank" class="file-name">${task.fileUrl.split('/').pop()}</a>` : '<span class="file-name"></span>'}
+                                ${task.fileUrl 
+                                    ? `<a href="${task.fileUrl}" target="_blank" class="file-name">📎 ${task.fileUrl.split('/').pop()}</a>` 
+                                    : '<span class="file-name"></span>'}
                             </td>
                             <td>
                                 <button class="delete-btn" onclick="deleteTask(this)">×</button>
@@ -295,14 +298,23 @@
             if (!file) return;
 
             const row = input.closest('tr');
-            const fileNameSpan = row.querySelector('.file-name');
-            fileNameSpan.textContent = file.name;
 
             try {
                 const fileRef = storage.ref(`attachments/${Date.now()}_${file.name}`);
                 await fileRef.put(file);
                 const downloadURL = await fileRef.getDownloadURL();
+
+                // Save URL into dataset for Firestore
                 input.dataset.fileUrl = downloadURL;
+
+                // Replace or add link
+                let fileNameEl = row.querySelector('.file-name');
+                if (fileNameEl) {
+                    fileNameEl.outerHTML = `<a href="${downloadURL}" target="_blank" class="file-name">📎 ${file.name}</a>`;
+                } else {
+                    input.insertAdjacentHTML('afterend', `<a href="${downloadURL}" target="_blank" class="file-name">📎 ${file.name}</a>`);
+                }
+
                 saveData();
             } catch (error) {
                 console.error("File upload error:", error);
